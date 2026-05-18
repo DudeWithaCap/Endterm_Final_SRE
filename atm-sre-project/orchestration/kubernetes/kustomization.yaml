@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: atm-banking
+
+resources:
+  - 00-namespace.yml
+  - 01-postgres.yml
+  - 02-redis.yml
+  - 03-mongo.yml
+  - 04-auth.yml
+  - 05-account.yml
+  - 06-transaction.yml
+  - 07-history.yml
+  - 08-card-management.yml
+  - 09-gateway.yml
+  - 10-background-load.yml
+  - 11-frontend.yml
+  - 12-monitoring.yml

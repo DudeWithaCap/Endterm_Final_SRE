@@ -1,0 +1,122 @@
+---
+- name: Deploy monitoring stack
+  hosts: monitoring_servers
+  become: true
+  vars:
+    monitoring_dir: /opt/monitoring
+    prometheus_config_dir: /opt/monitoring/prometheus
+    grafana_config_dir: /opt/monitoring/grafana
+
+  tasks:
+    - name: Create monitoring directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: ubuntu
+        mode: "0755"
+      loop:
+        - "{{ monitoring_dir }}"
+        - "{{ prometheus_config_dir }}"
+        - "{{ grafana_config_dir }}/provisioning/datasources"
+        - "{{ grafana_config_dir }}/provisioning/dashboards"
+        - "{{ grafana_config_dir }}/dashboards"
+        - /data/prometheus
+        - /data/grafana
+
+    - name: Copy Prometheus config
+      copy:
+        src: "{{ playbook_dir }}/../../monitoring/prometheus/prometheus.yml"
+        dest: "{{ prometheus_config_dir }}/prometheus.yml"
+        owner: ubuntu
+
+    - name: Copy Prometheus alert rules
+      copy:
+        src: "{{ playbook_dir }}/../../monitoring/prometheus/alert_rules.yml"
+        dest: "{{ prometheus_config_dir }}/alert_rules.yml"
+        owner: ubuntu
+
+    - name: Update Prometheus scrape targets with actual IPs
+      replace:
+        path: "{{ prometheus_config_dir }}/prometheus.yml"
+        regexp: '(gateway|auth|account|transaction|history|card-management|background-load):'
+        replace: '{{ hostvars["app-server"]["ansible_host"] }}:'
+
+    - name: Copy Grafana provisioning files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: ubuntu
+      loop:
+        - src: "{{ playbook_dir }}/../../monitoring/grafana/provisioning/datasources/prometheus.yml"
+          dest: "{{ grafana_config_dir }}/provisioning/datasources/prometheus.yml"
+        - src: "{{ playbook_dir }}/../../monitoring/grafana/provisioning/dashboards/dashboard.yml"
+          dest: "{{ grafana_config_dir }}/provisioning/dashboards/dashboard.yml"
+        - src: "{{ playbook_dir }}/../../monitoring/grafana/dashboards/atm-banking.json"
+          dest: "{{ grafana_config_dir }}/dashboards/atm-banking.json"
+
+    - name: Write monitoring docker-compose file
+      copy:
+        dest: "{{ monitoring_dir }}/docker-compose.yml"
+        owner: ubuntu
+        content: |
+          version: "3.9"
+          services:
+            prometheus:
+              image: prom/prometheus:v2.52.0
+              ports:
+                - "9090:9090"
+              volumes:
+                - {{ prometheus_config_dir }}:/etc/prometheus:ro
+                - /data/prometheus:/prometheus
+              command:
+                - "--config.file=/etc/prometheus/prometheus.yml"
+                - "--storage.tsdb.path=/prometheus"
+                - "--storage.tsdb.retention.time=7d"
+                - "--web.enable-lifecycle"
+              restart: unless-stopped
+
+            grafana:
+              image: grafana/grafana:10.4.3
+              ports:
+                - "3001:3000"
+              environment:
+                GF_SECURITY_ADMIN_USER: admin
+                GF_SECURITY_ADMIN_PASSWORD: admin
+                GF_USERS_ALLOW_SIGN_UP: "false"
+              volumes:
+                - /data/grafana:/var/lib/grafana
+                - {{ grafana_config_dir }}/provisioning:/etc/grafana/provisioning:ro
+                - {{ grafana_config_dir }}/dashboards:/var/lib/grafana/dashboards:ro
+              restart: unless-stopped
+
+    - name: Start monitoring stack
+      command:
+        cmd: docker compose up -d
+        chdir: "{{ monitoring_dir }}"
+      become_user: ubuntu
+
+    - name: Wait for Prometheus to be ready
+      uri:
+        url: "http://localhost:9090/-/healthy"
+        method: GET
+        status_code: 200
+      register: prom_health
+      until: prom_health.status == 200
+      retries: 15
+      delay: 5
+
+    - name: Wait for Grafana to be ready
+      uri:
+        url: "http://localhost:3001/api/health"
+        method: GET
+        status_code: 200
+      register: grafana_health
+      until: grafana_health.status == 200
+      retries: 15
+      delay: 5
+
+    - name: Print monitoring URLs
+      debug:
+        msg:
+          - "Prometheus: http://{{ ansible_host }}:9090"
+          - "Grafana:    http://{{ ansible_host }}:3001  (admin / admin)"

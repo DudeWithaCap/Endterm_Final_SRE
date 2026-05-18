@@ -1,0 +1,9 @@
+version: "3.9"
+
+# Incident simulation override — points Transaction Service at a non-existent DB host.
+# Applied by: incident-break.ps1
+# Removed by: incident-fix.ps1
+services:
+  transaction:
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@wrong-host:5432/bankdb

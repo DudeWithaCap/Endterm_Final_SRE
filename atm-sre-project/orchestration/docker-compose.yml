@@ -1,0 +1,231 @@
+version: "3.9"
+
+services:
+  # ── Databases ─────────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bankdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bankdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Frontend ──────────────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3006:80"
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+  # ── Services ──────────────────────────────────────────────────────────────
+
+  auth:
+    build:
+      context: ../services/auth
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/bankdb
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: super-secret-jwt-key-change-in-prod
+      JWT_EXPIRE_MINUTES: "60"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  account:
+    build:
+      context: ../services/account
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/bankdb
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: super-secret-jwt-key-change-in-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  transaction:
+    build:
+      context: ../services/transaction
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/bankdb
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: super-secret-jwt-key-change-in-prod
+      HISTORY_SERVICE_URL: http://history:8004
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  history:
+    build:
+      context: ../services/history
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: bankdb
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: super-secret-jwt-key-change-in-prod
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  card-management:
+    build:
+      context: ../services/card-management
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/bankdb
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: super-secret-jwt-key-change-in-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ../services/gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth:8001
+      ACCOUNT_SERVICE_URL: http://account:8002
+      TRANSACTION_SERVICE_URL: http://transaction:8003
+      HISTORY_SERVICE_URL: http://history:8004
+      CARD_SERVICE_URL: http://card-management:8005
+    depends_on:
+      - auth
+      - account
+      - transaction
+      - history
+      - card-management
+    restart: unless-stopped
+
+  background-load:
+    build:
+      context: ../services/background-load
+      dockerfile: Dockerfile
+    ports:
+      - "8006:8006"
+    environment:
+      GATEWAY_URL: http://gateway:8000
+      LOAD_INTERVAL_SECONDS: "5"
+      LATENCY_SPIKE_EVERY: "30"
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+  # ── Monitoring ────────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../monitoring/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - gateway
+      - auth
+      - account
+      - transaction
+      - history
+      - card-management
+      - background-load
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    ports:
+      - "3009:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongo_data:
+  prometheus_data:
+  grafana_data:

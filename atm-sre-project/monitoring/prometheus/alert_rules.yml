@@ -1,0 +1,124 @@
+groups:
+  - name: sre_availability
+    rules:
+      # SLO: Availability >= 99% — alert when any service is unreachable
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is DOWN"
+          description: "Prometheus cannot scrape {{ $labels.job }} (instance {{ $labels.instance }}). Service has been unreachable for more than 1 minute."
+
+      # Warn before the full outage window is consumed (5-minute window)
+      - alert: ServiceUnreachableShort
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Service {{ $labels.job }} may be down"
+          description: "{{ $labels.job }} has been unreachable for 30s — investigating."
+
+  - name: sre_latency
+    rules:
+      # SLO: Latency <= 200ms p95 for transaction and account services
+      - alert: HighLatencyTransaction
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{job="transaction"}[5m])
+          ) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on Transaction Service"
+          description: "p95 latency is {{ $value | humanizeDuration }} (SLO: 200ms). Possible DB slowness or artificial spike from load service."
+
+      - alert: HighLatencyAccount
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{job="account"}[5m])
+          ) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on Account Service"
+          description: "p95 latency is {{ $value | humanizeDuration }} (SLO: 200ms)."
+
+      # Critical: sustained high latency
+      - alert: CriticalLatencyTransaction
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{job="transaction"}[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL latency on Transaction Service (>500ms p95)"
+          description: "p95 latency is {{ $value | humanizeDuration }}. Immediate investigation required."
+
+  - name: sre_error_rate
+    rules:
+      # SLO: Error rate <= 1% across all services
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status_code=~"5.."}[5m]))
+            /
+            sum by (job) (rate(http_requests_total[5m]))
+          ) > 0.01
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | humanizePercentage }} (SLO: 1%). Check service logs."
+
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status_code=~"5.."}[5m]))
+            /
+            sum by (job) (rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL 5xx error rate on {{ $labels.job }} (>5%)"
+          description: "Error rate is {{ $value | humanizePercentage }}. Service may be failing."
+
+  - name: sre_transactions
+    rules:
+      # SLO: Transaction success rate >= 99%
+      - alert: LowTransactionSuccessRate
+        expr: |
+          (
+            rate(background_load_ops_total{status="success"}[5m])
+            /
+            rate(background_load_ops_total[5m])
+          ) < 0.99
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Transaction success rate below 99% SLO"
+          description: "Success rate is {{ $value | humanizePercentage }}. Background load is seeing elevated failures."
+
+      - alert: TransactionServiceNoDB
+        expr: |
+          (
+            rate(http_requests_total{job="transaction", status_code=~"5.."}[2m])
+            /
+            rate(http_requests_total{job="transaction"}[2m])
+          ) > 0.5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Transaction Service error rate >50% — possible DB connection failure"
+          description: "More than half of transaction requests are failing. Check DATABASE_URL config and PostgreSQL connectivity. This matches the incident simulation scenario."

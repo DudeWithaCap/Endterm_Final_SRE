@@ -1,0 +1,23 @@
+# Variables shared across all hosts
+
+project_name: atm-sre
+project_repo: https://github.com/your-org/atm-sre-project.git  # update with your repo
+project_dir: /opt/atm-sre-project
+
+docker_compose_version: "2.27.0"
+k3s_version: "v1.29.4+k3s1"
+
+# Database connection strings (used by configure.yml)
+postgres_host: "{{ hostvars['db-server']['ansible_host'] }}"
+mongo_host: "{{ hostvars['db-server']['ansible_host'] }}"
+redis_host: "{{ hostvars['db-server']['ansible_host'] }}"
+
+database_url: "postgresql://postgres:postgres@{{ postgres_host }}:5432/bankdb"
+redis_url: "redis://{{ redis_host }}:6379/0"
+mongo_url: "mongodb://{{ mongo_host }}:27017"
+
+jwt_secret: "super-secret-jwt-key-change-in-prod"
+
+# Monitoring
+prometheus_host: "{{ hostvars['monitoring-server']['ansible_host'] }}"
+grafana_host: "{{ hostvars['monitoring-server']['ansible_host'] }}"

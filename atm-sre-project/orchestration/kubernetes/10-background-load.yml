@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: background-load-config
+  namespace: atm-banking
+data:
+  GATEWAY_URL: http://gateway:8000
+  LOAD_INTERVAL_SECONDS: "5"
+  LATENCY_SPIKE_EVERY: "30"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: background-load
+  namespace: atm-banking
+  labels:
+    app: background-load
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: background-load
+  template:
+    metadata:
+      labels:
+        app: background-load
+    spec:
+      containers:
+        - name: background-load
+          image: atm-sre/background-load:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8006
+          envFrom:
+            - configMapRef:
+                name: background-load-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8006
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: background-load
+  namespace: atm-banking
+spec:
+  selector:
+    app: background-load
+  ports:
+    - port: 8006
+      targetPort: 8006
+  type: ClusterIP

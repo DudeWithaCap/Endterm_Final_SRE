@@ -1,0 +1,99 @@
+---
+- name: Build and deploy ATM SRE stack
+  hosts: app_servers
+  become: true
+  vars:
+    compose_file: "{{ project_dir }}/orchestration/docker-compose.yml"
+
+  tasks:
+    - name: Pull latest code
+      git:
+        repo: "{{ project_repo }}"
+        dest: "{{ project_dir }}"
+        version: main
+        force: yes
+      become_user: ubuntu
+
+    - name: Build all Docker images
+      command:
+        cmd: bash orchestration/swarm/build-images.sh
+        chdir: "{{ project_dir }}"
+      become_user: ubuntu
+      register: build_output
+
+    - name: Print build output
+      debug:
+        msg: "{{ build_output.stdout_lines }}"
+
+    - name: Stop existing stack (if running)
+      command:
+        cmd: docker compose -f "{{ compose_file }}" down --remove-orphans
+        chdir: "{{ project_dir }}/orchestration"
+      become_user: ubuntu
+      ignore_errors: yes
+
+    - name: Start full stack with docker compose
+      command:
+        cmd: docker compose -f "{{ compose_file }}" up -d
+        chdir: "{{ project_dir }}/orchestration"
+      become_user: ubuntu
+      environment:
+        COMPOSE_PROJECT_NAME: atm
+
+    - name: Wait for gateway health
+      uri:
+        url: "http://localhost:8000/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 20
+      delay: 5
+
+    - name: Wait for auth service health
+      uri:
+        url: "http://localhost:8001/health"
+        method: GET
+        status_code: 200
+      register: auth_health
+      until: auth_health.status == 200
+      retries: 20
+      delay: 5
+
+    - name: Print running containers
+      command: docker ps --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}\t{{ '{{' }}.Ports{{ '}}' }}"
+      become_user: ubuntu
+      register: docker_ps
+      changed_when: false
+
+    - name: Show running containers
+      debug:
+        msg: "{{ docker_ps.stdout_lines }}"
+
+- name: Deploy to Kubernetes (k3s)
+  hosts: app_servers
+  become: true
+  tasks:
+    - name: Apply all Kubernetes manifests
+      command:
+        cmd: k3s kubectl apply -k orchestration/kubernetes/
+        chdir: "{{ project_dir }}"
+      become_user: ubuntu
+      register: k8s_apply
+
+    - name: Print k8s apply output
+      debug:
+        msg: "{{ k8s_apply.stdout_lines }}"
+
+    - name: Wait for all deployments to be ready
+      command: >
+        k3s kubectl rollout status deployment
+        -n atm-banking
+        --timeout=300s
+      become_user: ubuntu
+      register: rollout_status
+      changed_when: false
+
+    - name: Print rollout status
+      debug:
+        msg: "{{ rollout_status.stdout_lines }}"
