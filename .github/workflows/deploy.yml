@@ -58,6 +58,7 @@ jobs:
           mkdir -p ~/.kube
           scp ubuntu@${{ secrets.EC2_HOST }}:~/.kube/config ~/.kube/config
           sed -i "s/127.0.0.1/${{ secrets.EC2_HOST }}/g" ~/.kube/config
+          kubectl config set-cluster default --insecure-skip-tls-verify=true
 
       - name: Apply Kubernetes manifests
         run: kubectl apply -k atm-sre-project/orchestration/kubernetes/
