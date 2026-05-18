@@ -48,9 +48,12 @@ jobs:
       - name: Deploy on EC2
         run: |
           ssh ubuntu@${{ secrets.EC2_HOST }} '
-            cd ~/Endterm_Final_SRE
+            cd ~/atm-sre-project
             git pull origin main
-            sudo kubectl apply -k atm-sre-project/orchestration/kubernetes/
+            sudo kubectl apply -k ~/atm-sre-project/atm-sre-project/orchestration/kubernetes/
+            sudo kubectl create secret generic jwt-secret \
+              --from-literal=JWT_SECRET=supersecretjwtkey123 \
+              --namespace=atm-banking --dry-run=client -o yaml | sudo kubectl apply -f -
             sudo kubectl rollout restart deployment --namespace=atm-banking
           '
 
