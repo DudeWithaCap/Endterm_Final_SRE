@@ -1,4 +1,5 @@
 ---
+
 - name: Deploy monitoring stack
   hosts: monitoring_servers
   become: true
@@ -40,6 +41,7 @@
         path: "{{ prometheus_config_dir }}/prometheus.yml"
         regexp: '(gateway|auth|account|transaction|history|card-management|background-load):'
         replace: '{{ hostvars["app-server"]["ansible_host"] }}:'
+      # Note: this is a simplification — in practice, use templating or service discovery
 
     - name: Copy Grafana provisioning files
       copy:
