@@ -48,6 +48,7 @@ services:
 
 
   frontend:
+    image: thatonekap/atm-frontend:latest
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -59,6 +60,7 @@ services:
 
 
   auth:
+    image: thatonekap/atm-auth:latest
     build:
       context: ../services/auth
       dockerfile: Dockerfile
@@ -77,6 +79,7 @@ services:
     restart: unless-stopped
 
   account:
+    image: thatonekap/atm-account:latest
     build:
       context: ../services/account
       dockerfile: Dockerfile
@@ -94,6 +97,7 @@ services:
     restart: unless-stopped
 
   transaction:
+    image: thatonekap/atm-transaction:latest
     build:
       context: ../services/transaction
       dockerfile: Dockerfile
@@ -112,6 +116,7 @@ services:
     restart: unless-stopped
 
   history:
+    image: thatonekap/atm-history:latest
     build:
       context: ../services/history
       dockerfile: Dockerfile
@@ -130,6 +135,7 @@ services:
     restart: unless-stopped
 
   card-management:
+    image: thatonekap/atm-card-management:latest
     build:
       context: ../services/card-management
       dockerfile: Dockerfile
@@ -147,6 +153,7 @@ services:
     restart: unless-stopped
 
   gateway:
+    image: thatonekap/atm-gateway:latest
     build:
       context: ../services/gateway
       dockerfile: Dockerfile
@@ -167,6 +174,7 @@ services:
     restart: unless-stopped
 
   background-load:
+    image: thatonekap/atm-background-load:latest
     build:
       context: ../services/background-load
       dockerfile: Dockerfile
