@@ -38,38 +38,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Add EC2 host to known hosts
-        run: ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Copy kubeconfig from EC2
+      - name: Deploy on EC2
         run: |
-          mkdir -p ~/.kube
-          scp ubuntu@${{ secrets.EC2_HOST }}:~/.kube/config ~/.kube/config
-          sed -i "s/127.0.0.1/${{ secrets.EC2_HOST }}/g" ~/.kube/config
-          kubectl config set-cluster default --insecure-skip-tls-verify=true
-
-      - name: Apply Kubernetes manifests
-        run: kubectl apply -k atm-sre-project/orchestration/kubernetes/
-
-      - name: Restart all deployments to pull latest images
-        run: kubectl rollout restart deployment --namespace=atm-banking
-
-      - name: Wait for rollout to complete
-        run: |
-          sleep 60
-          kubectl get pods --namespace=atm-banking
+          ssh ubuntu@${{ secrets.EC2_HOST }} '
+            cd ~/Endterm_Final_SRE
+            git pull origin main
+            sudo kubectl apply -k atm-sre-project/orchestration/kubernetes/
+            sudo kubectl rollout restart deployment --namespace=atm-banking
+          '
 
   healthcheck:
     name: Health Check All Services
