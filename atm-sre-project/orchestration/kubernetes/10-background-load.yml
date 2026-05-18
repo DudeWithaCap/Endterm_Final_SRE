@@ -27,8 +27,8 @@ spec:
     spec:
       containers:
         - name: background-load
-          image: atm-sre/background-load:latest
-          imagePullPolicy: IfNotPresent
+          image: thatonekap/atm-background-load:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8006
           envFrom:

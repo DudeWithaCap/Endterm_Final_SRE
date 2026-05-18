@@ -15,7 +15,7 @@ metadata:
   labels:
     app: account
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: account
@@ -26,8 +26,8 @@ spec:
     spec:
       containers:
         - name: account
-          image: atm-sre/account:latest
-          imagePullPolicy: IfNotPresent
+          image: thatonekap/atm-account:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8002
           envFrom:
@@ -82,7 +82,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: account
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 5
   metrics:
     - type: Resource

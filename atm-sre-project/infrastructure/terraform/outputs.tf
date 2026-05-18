@@ -25,12 +25,12 @@ output "gateway_url" {
 
 output "frontend_url" {
   description = "Frontend URL"
-  value       = "http://${aws_eip.app_server.public_ip}:3000"
+  value       = "http://${aws_eip.app_server.public_ip}:3006"
 }
 
 output "grafana_url" {
   description = "Grafana URL"
-  value       = "http://${aws_eip.monitoring_server.public_ip}:3001"
+  value       = "http://${aws_eip.monitoring_server.public_ip}:3009"
 }
 
 output "prometheus_url" {

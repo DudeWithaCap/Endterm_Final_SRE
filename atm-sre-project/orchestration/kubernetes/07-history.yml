@@ -16,7 +16,7 @@ metadata:
   labels:
     app: history
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: history
@@ -27,8 +27,8 @@ spec:
     spec:
       containers:
         - name: history
-          image: atm-sre/history:latest
-          imagePullPolicy: IfNotPresent
+          image: thatonekap/atm-history:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8004
           envFrom:

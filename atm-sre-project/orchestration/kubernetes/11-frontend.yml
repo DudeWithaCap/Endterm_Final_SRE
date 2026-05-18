@@ -6,7 +6,7 @@ metadata:
   labels:
     app: frontend
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: frontend
@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: atm-sre/frontend:latest
-          imagePullPolicy: IfNotPresent
+          image: thatonekap/atm-frontend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           readinessProbe:

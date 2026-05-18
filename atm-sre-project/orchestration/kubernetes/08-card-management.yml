@@ -15,7 +15,7 @@ metadata:
   labels:
     app: card-management
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: card-management
@@ -26,8 +26,8 @@ spec:
     spec:
       containers:
         - name: card-management
-          image: atm-sre/card-management:latest
-          imagePullPolicy: IfNotPresent
+          image: thatonekap/atm-card-management:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8005
           envFrom:

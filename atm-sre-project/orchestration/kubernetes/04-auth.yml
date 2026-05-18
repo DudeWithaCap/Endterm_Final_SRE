@@ -25,7 +25,7 @@ metadata:
   labels:
     app: auth
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: auth
@@ -36,8 +36,8 @@ spec:
     spec:
       containers:
         - name: auth
-          image: atm-sre/auth:latest
-          imagePullPolicy: IfNotPresent
+          image: thatonekap/atm-auth:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8001
           envFrom:

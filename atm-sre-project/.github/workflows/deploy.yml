@@ -5,7 +5,6 @@ on:
     branches: [main]
 
 jobs:
-  # ── Job 1: Build and push all service images to Docker Hub ──────────────────
   build:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
@@ -21,42 +20,22 @@ jobs:
 
       - name: Build and push all service images
         run: |
-          SERVICES=(gateway auth account transaction history card-management background-load)
+          SERVICES=(gateway auth account transaction history card-management background-load frontend)
           for SERVICE in "${SERVICES[@]}"; do
+            if [ "$SERVICE" = "frontend" ]; then
+              CTX="frontend"
+            else
+              CTX="services/${SERVICE}"
+            fi
             echo "Building ${{ secrets.DOCKER_USERNAME }}/atm-${SERVICE}:latest..."
-            docker build -t ${{ secrets.DOCKER_USERNAME }}/atm-${SERVICE}:latest services/${SERVICE}
+            docker build -t ${{ secrets.DOCKER_USERNAME }}/atm-${SERVICE}:latest ${CTX}
             docker push ${{ secrets.DOCKER_USERNAME }}/atm-${SERVICE}:latest
-            echo "Pushed ${{ secrets.DOCKER_USERNAME }}/atm-${SERVICE}:latest"
           done
 
-  # ── Job 2: SSH into EC2 and run Ansible deploy playbook ─────────────────────
-  provision:
-    name: Provision via Ansible
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Set up SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-      - name: Add EC2 host to known hosts
-        run: ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Pull latest code and run Ansible on EC2
-        run: |
-          ssh ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
-            cd ~/atm-sre-project
-            git pull
-            ansible-playbook -i "localhost," -c local infrastructure/ansible/deploy.yml
-          EOF
-
-  # ── Job 3: Apply Kubernetes manifests and restart deployments ───────────────
   deploy:
     name: Deploy to Kubernetes
     runs-on: ubuntu-latest
-    needs: provision
+    needs: build
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -77,14 +56,17 @@ jobs:
         run: |
           mkdir -p ~/.kube
           scp ubuntu@${{ secrets.EC2_HOST }}:~/.kube/config ~/.kube/config
+          sed -i "s/127.0.0.1/${{ secrets.EC2_HOST }}/g" ~/.kube/config
 
       - name: Apply Kubernetes manifests
-        run: kubectl apply -f orchestration/kubernetes/
+        run: kubectl apply -k orchestration/kubernetes/
 
-      - name: Restart all deployments
+      - name: Restart all deployments to pull latest images
         run: kubectl rollout restart deployment --namespace=atm-banking
 
-  # ── Job 4: Verify every service responds 200 on /health ─────────────────────
+      - name: Wait for rollout to complete
+        run: kubectl rollout status deployment --namespace=atm-banking --timeout=180s
+
   healthcheck:
     name: Health Check All Services
     runs-on: ubuntu-latest
