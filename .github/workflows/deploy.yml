@@ -19,6 +19,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push all service images
+        working-directory: atm-sre-project
         run: |
           SERVICES=(gateway auth account transaction history card-management background-load frontend)
           for SERVICE in "${SERVICES[@]}"; do
@@ -59,7 +60,7 @@ jobs:
           sed -i "s/127.0.0.1/${{ secrets.EC2_HOST }}/g" ~/.kube/config
 
       - name: Apply Kubernetes manifests
-        run: kubectl apply -k orchestration/kubernetes/
+        run: kubectl apply -k atm-sre-project/orchestration/kubernetes/
 
       - name: Restart all deployments to pull latest images
         run: kubectl rollout restart deployment --namespace=atm-banking
