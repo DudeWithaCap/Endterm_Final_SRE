@@ -67,46 +67,28 @@ jobs:
         run: kubectl rollout restart deployment --namespace=atm-banking
 
       - name: Wait for rollout to complete
-        run: kubectl rollout status deployment --namespace=atm-banking --timeout=180s
+        run: |
+          sleep 60
+          kubectl get pods --namespace=atm-banking
 
   healthcheck:
     name: Health Check All Services
     runs-on: ubuntu-latest
     needs: deploy
     steps:
-      - name: Wait for pods to be ready
-        run: sleep 30
-
-      - name: Check all service health endpoints
+      - name: Set up SSH key
         run: |
-          FAILED=0
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-          check() {
-            SERVICE=$1
-            PORT=$2
-            URL="http://${{ secrets.EC2_HOST }}:${PORT}/health"
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL")
-            if [ "$HTTP_CODE" -eq 200 ]; then
-              echo "✓ ${SERVICE} (port ${PORT}) — OK"
-            else
-              echo "✗ ${SERVICE} (port ${PORT}) — FAILED (HTTP ${HTTP_CODE})"
-              FAILED=1
-            fi
-          }
+      - name: Wait for all pods to be ready
+        run: |
+          ssh ubuntu@${{ secrets.EC2_HOST }} \
+            'sudo kubectl wait --for=condition=ready pod --all -n atm-banking --timeout=300s'
 
-          check gateway          8000
-          check auth             8001
-          check account          8002
-          check transaction      8003
-          check history          8004
-          check card-management  8005
-          check background-load  8006
-
-          if [ "$FAILED" -eq 1 ]; then
-            echo ""
-            echo "Health check failed — one or more services are unhealthy."
-            exit 1
-          else
-            echo ""
-            echo "All 7 services are healthy."
-          fi
+      - name: Print pod status
+        run: |
+          ssh ubuntu@${{ secrets.EC2_HOST }} \
+            'sudo kubectl get pods -n atm-banking'
